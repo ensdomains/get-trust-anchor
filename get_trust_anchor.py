@@ -52,6 +52,7 @@ trust anchors are still cryptographically validated.
 from __future__ import print_function
 
 import argparse
+import binascii
 import base64
 import codecs
 import datetime
@@ -346,7 +347,7 @@ def get_matching_ksk(ksk_records, valid_trust_anchors):
     return matched_ksks
 
 
-def export_ksk(valid_ksks, ds_record_filename, dnskey_record_filename):
+def export_ksk(valid_ksks, ds_record_filename, ds_record_hex_filename, dnskey_record_filename):
     """Takes a list of KSKs; returns nothing but writes out files"""
     ##############################
     # Still to do:
@@ -380,6 +381,12 @@ def export_ksk(valid_ksks, ds_record_filename, dnskey_record_filename):
             sha256ofkey=hash_as_hex)
         print("Writing out {}.".format(ds_record_filename))
         write_out_file(ds_record_filename, ds_record_contents)
+        # key tag, algorithm, digest type, digest
+        ds_record_rdata = struct.pack("!HBB", this_key_tag, int(this_matched_ksk["a"]), 2) + binascii.unhexlify(hash_as_hex)
+        # name, type, class, ttl, rdlength
+        ds_record_hex_contents = binascii.hexlify(struct.pack("!sHHIH", "\0", 43, 1, 3600, len(ds_record_rdata)) + ds_record_rdata)
+        print("Writing out {}.".format(ds_record_hex_filename))
+        write_out_file(ds_record_hex_filename, ds_record_hex_contents)
 
 
 def main():
@@ -392,6 +399,7 @@ def main():
     temp_files = [trust_anchor_filename, signature_filename, icann_ca_filename]
     dnskey_record_filename = "ksk-as-dnskey.txt"
     ds_record_filename = "ksk-as-ds.txt"
+    ds_record_hex_filename = "ksk-as-ds.hex"
 
     cmd_parse = argparse.ArgumentParser(description="DNSSEC Trust Anchor Tool")
     cmd_parse.add_argument("--local", dest="local", type=str,\
@@ -460,7 +468,7 @@ def main():
     matched_ksks = get_matching_ksk(ksk_records, valid_trust_anchors)
 
     ### Step 7. Write out the trust anchors as a DNSKEY and DS records.
-    export_ksk(matched_ksks, ds_record_filename, dnskey_record_filename)
+    export_ksk(matched_ksks, ds_record_filename, ds_record_hex_filename, dnskey_record_filename)
     # Delete the temporary files unless requested not to
     if opts.keep:
         print("Kept the temporary files: {}".format(" ".join(temp_files)))
